@@ -91,7 +91,6 @@
 // ⚠️ ЗАМЕНИ на URL твоего бэкенда на Render (получишь на шаге 6):
 const API_URL = 'https://song-generator-zbqc.onrender.com/api/generate';
 
-
 async function generateSong() {
     const theme = document.getElementById('theme').value.trim();
     const genre = document.getElementById('genre').value;
@@ -100,12 +99,12 @@ async function generateSong() {
     const resultDiv = document.getElementById('result');
 
     if (!theme) {
-        resultDiv.innerHTML = '<p class="error">Пожалуйста, введи тему песни</p>';
+        resultDiv.innerHTML = '<p class="error">Введи тему песни</p>';
         return;
     }
 
     btn.disabled = true;
-    resultDiv.innerHTML = '<div class="loading">🎤 Генерирую текст и музыку...<br><small>До 3 минут</small></div>';
+    resultDiv.innerHTML = '<div class="loading">🎤 Генерирую...<br><small>До 3 минут</small></div>';
 
     try {
         const response = await fetch(API_URL, {
@@ -117,19 +116,58 @@ async function generateSong() {
         if (!response.ok) throw new Error(data.error || 'Ошибка сервера');
 
         let html = `<h3>📜 Текст песни</h3><div class="lyrics-box">${data.lyrics}</div>`;
+
         if (data.has_music && data.music_url) {
             html += `<h3>🎧 Твоя песня</h3>
-                <audio controls src="${data.music_url}"></audio>
-                <p class="hint">Скачать: правый клик → «Сохранить аудио как...»</p>`;
+                <audio controls id="audioPlayer"></audio>
+                <button onclick="downloadAudio()" style="margin-top:10px;background:linear-gradient(135deg,#27ae60,#2ecc71);">💾 Скачать MP3</button>`;
+            resultDiv.innerHTML = html;
+            // Ставим src после вставки в DOM — так надёжнее
+            document.getElementById('audioPlayer').src = data.music_url;
+            // Сохраняем ссылку для скачивания
+            window.__lastAudioUrl = data.music_url;
         } else {
-            html += `<p class="error">⚠️ Музыка не сгенерирована: ${data.music_error || 'неизвестная ошибка'}</p>`;
+            html += `<p class="error">⚠️ ${data.music_error || 'Музыка не сгенерирована'}</p>`;
+            resultDiv.innerHTML = html;
         }
-        resultDiv.innerHTML = html;
     } catch (error) {
         resultDiv.innerHTML = `<p class="error">Ошибка: ${error.message}</p>`;
     } finally {
         btn.disabled = false;
     }
+}
+
+function downloadAudio() {
+    const dataUrl = window.__lastAudioUrl;
+    if (!dataUrl) return;
+
+    // Если это реальный URL — просто открываем
+    if (!dataUrl.startsWith('data:')) {
+        window.open(dataUrl, '_blank');
+        return;
+    }
+
+    // Разбираем data:audio/xxx;base64,AAAA...
+    const commaIdx = dataUrl.indexOf(',');
+    const header = dataUrl.substring(5, commaIdx);
+    const b64 = dataUrl.substring(commaIdx + 1);
+    const mime = header.split(';')[0] || 'audio/mpeg';
+
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'song.' + (mime.includes('wav') ? 'wav' : mime.includes('ogg') ? 'ogg' : 'mp3');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 </script>
 </body>
