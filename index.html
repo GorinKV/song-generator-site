@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎵 AI Генератор Песен</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh; display: flex; justify-content: center;
+            align-items: center; padding: 20px;
+        }
+        .container {
+            background: rgba(255,255,255,0.97); border-radius: 24px;
+            padding: 40px; max-width: 640px; width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { text-align: center; color: #333; font-size: 1.8rem; margin-bottom: 6px; }
+        .badge {
+            display: block; text-align: center; background: #e8f5e9;
+            color: #2e7d32; font-size: 0.85rem; font-weight: 600;
+            padding: 6px 12px; border-radius: 20px; margin: 0 auto 24px;
+            width: fit-content;
+        }
+        label { display: block; font-weight: 600; color: #444; margin-bottom: 6px; font-size: 0.9rem; }
+        textarea, select, input[type="number"] {
+            width: 100%; padding: 14px; border: 2px solid #e0e0e0;
+            border-radius: 12px; font-size: 1rem; margin-bottom: 16px;
+        }
+        textarea:focus, select:focus, input:focus { outline: none; border-color: #667eea; }
+        textarea { resize: vertical; min-height: 80px; }
+        .row { display: flex; gap: 12px; }
+        .row > div { flex: 1; }
+        button {
+            width: 100%; padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; border-radius: 12px;
+            font-size: 1.1rem; font-weight: 700; cursor: pointer;
+            margin-top: 8px; transition: transform 0.2s;
+        }
+        button:hover:not(:disabled) { transform: translateY(-2px); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .result { margin-top: 28px; }
+        .result h3 { color: #333; margin-bottom: 10px; font-size: 1.1rem; }
+        .lyrics-box {
+            background: #f8f9ff; border-radius: 12px; padding: 20px;
+            white-space: pre-wrap; line-height: 1.8; color: #333;
+            margin-bottom: 20px; border-left: 4px solid #667eea;
+        }
+        audio { width: 100%; margin-top: 6px; }
+        .loading { text-align: center; color: #667eea; font-weight: 600; padding: 24px; }
+        .error { color: #e74c3c; text-align: center; padding: 12px; background: #fdecea; border-radius: 8px; }
+        .hint { font-size: 0.8rem; color: #888; text-align: center; margin-top: 12px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🎵 AI Генератор Песен</h1>
+    <span class="badge">✅ Полностью бесплатно · Работает из РФ</span>
+
+    <label for="theme">Тема песни</label>
+    <textarea id="theme" placeholder="Например: осенний дождь в Москве, любовь на Марсе..."></textarea>
+
+    <div class="row">
+        <div>
+            <label for="genre">Жанр</label>
+            <select id="genre">
+                <option value="pop">Поп</option>
+                <option value="rock">Рок</option>
+                <option value="rap">Рэп</option>
+                <option value="chanson">Шансон</option>
+                <option value="indie">Инди</option>
+                <option value="electronic">Электроника</option>
+            </select>
+        </div>
+        <div>
+            <label for="duration">Длительность (сек)</label>
+            <input type="number" id="duration" value="30" min="10" max="120">
+        </div>
+    </div>
+
+    <button id="generateBtn" onclick="generateSong()">🎤 Создать песню</button>
+    <p class="hint">Генерация может занять 1–3 минуты</p>
+
+    <div id="result" class="result"></div>
+</div>
+
+<script>
+// ⚠️ ЗАМЕНИ на URL твоего бэкенда на Render (получишь на шаге 6):
+const API_URL = 'https://song-generator-zbqc.onrender.com/api/generate';
+
+
+async function generateSong() {
+    const theme = document.getElementById('theme').value.trim();
+    const genre = document.getElementById('genre').value;
+    const duration = document.getElementById('duration').value;
+    const btn = document.getElementById('generateBtn');
+    const resultDiv = document.getElementById('result');
+
+    if (!theme) {
+        resultDiv.innerHTML = '<p class="error">Пожалуйста, введи тему песни</p>';
+        return;
+    }
+
+    btn.disabled = true;
+    resultDiv.innerHTML = '<div class="loading">🎤 Генерирую текст и музыку...<br><small>До 3 минут</small></div>';
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme, genre, duration: parseInt(duration) })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Ошибка сервера');
+
+        let html = `<h3>📜 Текст песни</h3><div class="lyrics-box">${data.lyrics}</div>`;
+        if (data.has_music && data.music_url) {
+            html += `<h3>🎧 Твоя песня</h3>
+                <audio controls src="${data.music_url}"></audio>
+                <p class="hint">Скачать: правый клик → «Сохранить аудио как...»</p>`;
+        } else {
+            html += `<p class="error">⚠️ Музыка не сгенерирована: ${data.music_error || 'неизвестная ошибка'}</p>`;
+        }
+        resultDiv.innerHTML = html;
+    } catch (error) {
+        resultDiv.innerHTML = `<p class="error">Ошибка: ${error.message}</p>`;
+    } finally {
+        btn.disabled = false;
+    }
+}
+</script>
+</body>
+</html>
