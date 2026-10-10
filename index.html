@@ -91,7 +91,6 @@
 </div>
 
 <script>
-// ✅ РЕАЛЬНЫЙ АДРЕС БЭКЕНДА
 const API_URL = 'https://song-generator-zbqc.onrender.com/api/generate';
 
 async function generateSong() {
@@ -124,12 +123,43 @@ async function generateSong() {
             html += `<h3>🎧 Твоя песня</h3>
                 <audio controls src="${data.music_url}"></audio>
                 <button onclick="downloadAudio()" style="margin-top:10px;background:linear-gradient(135deg,#27ae60,#2ecc71);">💾 Скачать MP3</button>`;
-            resultDiv.innerHTML = html;
             window.__lastAudioUrl = data.music_url;
         } else {
             html += `<p class="error">⚠️ ${data.music_error || 'Музыка не сгенерирована'}</p>`;
-            resultDiv.innerHTML = html;
         }
+
+        // === ОТЛАДОЧНЫЙ БЛОК ===
+        if (data.debug) {
+            const dbg = data.debug;
+            const audioInfo = data.music_url
+                ? `✅ Аудио получено<br>MIME: ${dbg.mime || '?'}<br>Длина: ${data.music_url.length} символов (base64)`
+                : `❌ Аудио НЕ получено`;
+
+            html += `
+                <details style="margin-top:20px;background:#f0f4ff;border-radius:12px;padding:16px;font-size:0.85rem;">
+                    <summary style="cursor:pointer;font-weight:700;color:#4a5568;">🔧 Отладочная информация (нажми, чтобы раскрыть)</summary>
+                    <div style="margin-top:12px;line-height:1.7;color:#333;font-family:monospace;">
+                        <b>Аудио:</b> ${audioInfo}<br>
+                        <b>Стадия:</b> ${dbg.stage || '—'}<br>
+                        <b>Строк в ответе:</b> ${dbg.strings_count || 0}<br>
+                        <b>Выбран путь:</b> ${dbg.chosen_path || '—'}<br>
+                        <b>Длина выбранной:</b> ${dbg.chosen_len || 0}<br>
+                        <b>Первые байты (hex):</b> ${dbg.hex_head || '—'}<br>
+                        <b>MIME:</b> ${dbg.mime || '—'}<br>
+                        <b>Ошибка:</b> ${dbg.error || '—'}<br>
+                        <b>Превью:</b> ${dbg.raw_preview ? dbg.raw_preview.substring(0, 60) + '...' : '—'}
+                        <hr style="margin:10px 0;border:none;border-top:1px solid #ddd;">
+                        <b>Топ-5 строк:</b><br>
+                        ${(dbg.top_strings || []).map((s, i) =>
+                            `${i+1}. <code>${s.path}</code><br>&nbsp;&nbsp;len=${s.len}, head=<code>${s.head.substring(0, 40)}</code>`
+                        ).join('<br>')}
+                    </div>
+                </details>
+            `;
+        }
+
+        resultDiv.innerHTML = html;
+
     } catch (error) {
         resultDiv.innerHTML = `<p class="error">Ошибка: ${error.message}</p>`;
     } finally {
@@ -168,5 +198,6 @@ function downloadAudio() {
     URL.revokeObjectURL(url);
 }
 </script>
+    
 </body>
 </html>
