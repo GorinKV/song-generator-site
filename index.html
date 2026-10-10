@@ -45,32 +45,32 @@
         }
         button.primary:hover:not(:disabled) { transform: translateY(-2px); }
         button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        button.success {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+        }
+        button.secondary {
+            background: linear-gradient(135deg, #718096, #a0aec0);
+        }
+        button.actions { width: 100%; padding: 14px; border: none;
+            border-radius: 12px; font-size: 1rem; font-weight: 700;
+            color: white; cursor: pointer; margin-top: 8px;
+            transition: transform 0.2s; }
+        button.actions:hover:not(:disabled) { transform: translateY(-2px); }
+        button.actions:disabled { opacity: 0.6; cursor: not-allowed; }
 
         /* Прогресс */
         .progress-box {
             margin-top: 20px; padding: 20px; background: #f0f4ff;
             border-radius: 12px; border-left: 4px solid #667eea;
         }
-        .progress-stage {
-            font-weight: 700; color: #4a5568; margin-bottom: 8px;
-            font-size: 1rem;
-        }
-        .progress-sub {
-            font-size: 0.85rem; color: #718096; margin-bottom: 14px;
-        }
-        .progress-bar {
-            height: 8px; background: #e2e8f0; border-radius: 4px;
-            overflow: hidden; position: relative;
-        }
-        .progress-fill {
-            height: 100%; width: 0%; border-radius: 4px;
+        .progress-stage { font-weight: 700; color: #4a5568; margin-bottom: 8px; font-size: 1rem; }
+        .progress-sub { font-size: 0.85rem; color: #718096; margin-bottom: 14px; }
+        .progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 4px;
             background: linear-gradient(90deg, #667eea, #764ba2);
-            transition: width 0.6s ease;
-        }
-        .progress-timer {
-            text-align: right; font-size: 0.8rem; color: #a0aec0;
-            margin-top: 6px; font-family: monospace;
-        }
+            transition: width 0.6s ease; }
+        .progress-timer { text-align: right; font-size: 0.8rem; color: #a0aec0;
+            margin-top: 6px; font-family: monospace; }
         .spinner {
             display: inline-block; width: 14px; height: 14px;
             border: 2px solid #cbd5e0; border-top-color: #667eea;
@@ -85,6 +85,19 @@
             background: #f8f9ff; border-radius: 12px; padding: 20px;
             white-space: pre-wrap; line-height: 1.8; color: #333;
             margin-bottom: 20px; border-left: 4px solid #667eea;
+        }
+        .lyrics-edit {
+            width: 100%; padding: 16px; border: 2px solid #667eea;
+            border-radius: 12px; font-size: 0.95rem; line-height: 1.7;
+            font-family: inherit; resize: vertical; min-height: 250px;
+            background: #f8f9ff; color: #333; margin-bottom: 12px;
+        }
+        .lyrics-edit:focus { outline: none; border-color: #764ba2;
+            box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.15); }
+        .edit-hint {
+            font-size: 0.85rem; color: #718096; margin-bottom: 12px;
+            background: #fff8e1; padding: 10px 14px; border-radius: 8px;
+            border-left: 3px solid #f6ad55;
         }
         audio { width: 100%; margin-top: 6px; }
         .error { color: #e74c3c; text-align: center; padding: 12px; background: #fdecea; border-radius: 8px; }
@@ -135,7 +148,7 @@
         </div>
     </div>
 
-    <button id="generateBtn" class="primary" onclick="generateSong()">🎤 Создать песню</button>
+    <button id="generateBtn" class="primary" onclick="generateLyrics()">🎤 1. Написать текст песни</button>
     <label class="debug-toggle">
         <input type="checkbox" id="debugToggle"> 🔧 Режим отладки
     </label>
@@ -149,7 +162,12 @@ const API_BASE = 'https://song-generator-zbqc.onrender.com';
 const API_LYRICS = API_BASE + '/api/lyrics';
 const API_MUSIC = API_BASE + '/api/music';
 
-// Сохраняем настройку debug в localStorage
+// Текущее состояние
+let currentLyrics = '';
+let currentTheme = '';
+let currentGenre = 'rock';
+let currentDuration = 45;
+
 const debugToggle = document.getElementById('debugToggle');
 debugToggle.checked = localStorage.getItem('debugMode') === '1';
 debugToggle.addEventListener('change', () => {
@@ -198,7 +216,8 @@ function startTimer() {
     }, 500);
 }
 
-async function generateSong() {
+// ============ ЭТАП 1: ТЕКСТ ============
+async function generateLyrics() {
     const theme = document.getElementById('theme').value.trim();
     const genre = document.getElementById('genre').value;
     const duration = document.getElementById('duration').value;
@@ -210,16 +229,16 @@ async function generateSong() {
         return;
     }
 
+    currentTheme = theme;
+    currentGenre = genre;
+    currentDuration = parseInt(duration);
+
     btn.disabled = true;
     resultDiv.innerHTML = '';
     clearProgress();
 
-    // ============ ЭТАП 1: ТЕКСТ ============
-    showProgress('🎤 GigaChat пишет текст песни...', 'Обычно занимает 5-15 секунд', 10);
+    showProgress('🎤 GigaChat пишет текст песни...', 'Обычно 5-15 секунд', 30);
     startTimer();
-
-    let lyrics = '';
-    let lyricsDebug = null;
 
     try {
         const resp = await fetch(API_LYRICS, {
@@ -229,11 +248,7 @@ async function generateSong() {
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'Ошибка сервера');
-        lyrics = data.lyrics;
-        lyricsDebug = data.debug;
-
-        // Показываем текст сразу
-        resultDiv.innerHTML = `<h3>📜 Текст песни</h3><div class="lyrics-box">${lyrics}</div>`;
+        currentLyrics = data.lyrics;
     } catch (error) {
         clearProgress();
         resultDiv.innerHTML = `<p class="error">Ошибка текста: ${error.message}</p>`;
@@ -241,27 +256,67 @@ async function generateSong() {
         return;
     }
 
-    // ============ ЭТАП 2: МУЗЫКА ============
+    clearProgress();
+    showLyricsEditor();
+    btn.disabled = false;
+}
+
+function showLyricsEditor() {
+    const resultDiv = document.getElementById('result');
+    resultDiv.innerHTML = `
+        <h3>📝 Текст песни (можно редактировать)</h3>
+        <div class="edit-hint">
+            ✏️ Поправь текст, если нужно — потом он уйдёт композитору.
+            Теги <code>[Verse]</code>, <code>[Chorus]</code> помогают ACE Music понять структуру.
+        </div>
+        <textarea id="lyricsEditor" class="lyrics-edit">${escapeHtml(currentLyrics)}</textarea>
+
+        <button class="actions success" onclick="confirmLyrics()">✅ 2. Готово, делать музыку</button>
+        <button class="actions secondary" onclick="regenerateLyrics()">🔄 Перегенерировать текст</button>
+    `;
+}
+
+function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function confirmLyrics() {
+    const edited = document.getElementById('lyricsEditor').value.trim();
+    if (!edited) {
+        alert('Текст не может быть пустым');
+        return;
+    }
+    currentLyrics = edited;
+    generateMusic();
+}
+
+async function regenerateLyrics() {
+    document.getElementById('result').innerHTML = '';
+    await generateLyrics();
+}
+
+// ============ ЭТАП 2: МУЗЫКА ============
+async function generateMusic() {
+    const resultDiv = document.getElementById('result');
     const musicStages = [
-        [0,   '🎼 Композитор раскладывает аккорды...',    'ACE Music изучает текст песни', 20],
-        [15,  '🎸 Записываем гитарную партию...',         'Идёт генерация инструментала', 35],
-        [35,  '🎤 Вокалист записывает припев...',         'Синтез вокала на русском', 55],
-        [60,  '🥁 Добавляем барабаны и бас...',           'Собираем аранжировку', 70],
-        [90,  '🎚️ Сводим трек и мастеринг...',            'Финальная обработка аудио', 85],
-        [120, '⏳ Почти готово, ещё немного...',          'Дольше обычного — сервер загружен', 92],
-        [170, '🐢 Сервер отвечает медленно, ждём...',     'Не закрывай страницу', 95],
+        [0,   '🎼 Композитор раскладывает аккорды...',   'ACE Music изучает текст песни', 20],
+        [15,  '🎸 Записываем гитарную партию...',        'Идёт генерация инструментала', 35],
+        [35,  '🎤 Вокалист записывает припев...',        'Синтез вокала на русском', 55],
+        [60,  '🥁 Добавляем барабаны и бас...',          'Собираем аранжировку', 70],
+        [90,  '🎚️ Сводим трек и мастеринг...',           'Финальная обработка аудио', 85],
+        [120, '⏳ Почти готово, ещё немного...',         'Дольше обычного — сервер загружен', 92],
+        [170, '🐢 Сервер отвечает медленно, ждём...',    'Не закрывай страницу', 95],
     ];
 
-    startTimer();
-    let currentStageIdx = 0;
-    const stageTimers = musicStages.map(([t, stage, sub, pct]) =>
-        setTimeout(() => {
-            showProgress(stage, sub, pct);
-            currentStageIdx++;
-        }, t * 1000)
-    );
+    // Показываем текст (уже подтверждённый) + начинаем музыку
+    resultDiv.innerHTML = `<h3>📜 Текст песни</h3><div class="lyrics-box">${escapeHtml(currentLyrics)}</div>`;
 
     showProgress(musicStages[0][1], musicStages[0][2], musicStages[0][3]);
+    startTimer();
+
+    const stageTimers = musicStages.map(([t, stage, sub, pct]) =>
+        setTimeout(() => showProgress(stage, sub, pct), t * 1000)
+    );
 
     let musicData = null;
     let musicError = null;
@@ -271,7 +326,12 @@ async function generateSong() {
         const resp = await fetch(API_MUSIC, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lyrics, theme, genre, duration: parseInt(duration) })
+            body: JSON.stringify({
+                lyrics: currentLyrics,
+                theme: currentTheme,
+                genre: currentGenre,
+                duration: currentDuration,
+            })
         });
         const data = await resp.json();
         musicData = data.music_url;
@@ -284,33 +344,31 @@ async function generateSong() {
     stageTimers.forEach(t => clearTimeout(t));
     clearProgress();
 
-    // ============ РЕЗУЛЬТАТ ============
-    let html = `<h3>📜 Текст песни</h3><div class="lyrics-box">${lyrics}</div>`;
+    let html = `<h3>📜 Текст песни</h3><div class="lyrics-box">${escapeHtml(currentLyrics)}</div>`;
 
     if (musicData) {
         html += `<h3>🎧 Твоя песня</h3>
             <audio controls src="${musicData}"></audio>
-            <button class="primary" onclick="downloadAudio()" style="margin-top:10px;background:linear-gradient(135deg,#27ae60,#2ecc71);">💾 Скачать MP3</button>`;
+            <button class="actions success" onclick="downloadAudio()" style="margin-top:10px;">💾 Скачать MP3</button>`;
         window.__lastAudioUrl = musicData;
     } else {
         html += `<p class="error">⚠️ ${musicError || 'Музыка не сгенерирована'}</p>`;
     }
 
-    // Debug-блоки
+    html += `<button class="actions secondary" onclick="backToEdit()" style="margin-top:8px;">✏️ Вернуться к редактированию текста</button>`;
+
     const debugVisible = debugToggle.checked;
     const dbgStyle = debugVisible ? '' : 'display:none;';
-
     if (musicDebug) {
         html += `<div class="debug-block" style="${dbgStyle}">` + buildDebugHtml(musicDebug) + `</div>`;
     }
 
     resultDiv.innerHTML = html;
+}
 
-    if (debugToggle.checked) {
-        document.querySelectorAll('.debug-block').forEach(el => el.style.display = 'block');
-    }
-
-    btn.disabled = false;
+function backToEdit() {
+    showLyricsEditor();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function buildDebugHtml(d) {
