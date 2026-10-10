@@ -36,15 +36,49 @@
         textarea { resize: vertical; min-height: 80px; }
         .row { display: flex; gap: 12px; }
         .row > div { flex: 1; }
-        button {
+        button.primary {
             width: 100%; padding: 16px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white; border: none; border-radius: 12px;
             font-size: 1.1rem; font-weight: 700; cursor: pointer;
             margin-top: 8px; transition: transform 0.2s;
         }
-        button:hover:not(:disabled) { transform: translateY(-2px); }
-        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        button.primary:hover:not(:disabled) { transform: translateY(-2px); }
+        button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* Прогресс */
+        .progress-box {
+            margin-top: 20px; padding: 20px; background: #f0f4ff;
+            border-radius: 12px; border-left: 4px solid #667eea;
+        }
+        .progress-stage {
+            font-weight: 700; color: #4a5568; margin-bottom: 8px;
+            font-size: 1rem;
+        }
+        .progress-sub {
+            font-size: 0.85rem; color: #718096; margin-bottom: 14px;
+        }
+        .progress-bar {
+            height: 8px; background: #e2e8f0; border-radius: 4px;
+            overflow: hidden; position: relative;
+        }
+        .progress-fill {
+            height: 100%; width: 0%; border-radius: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.6s ease;
+        }
+        .progress-timer {
+            text-align: right; font-size: 0.8rem; color: #a0aec0;
+            margin-top: 6px; font-family: monospace;
+        }
+        .spinner {
+            display: inline-block; width: 14px; height: 14px;
+            border: 2px solid #cbd5e0; border-top-color: #667eea;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+            vertical-align: middle; margin-right: 6px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         .result { margin-top: 28px; }
         .result h3 { color: #333; margin-bottom: 10px; font-size: 1.1rem; }
         .lyrics-box {
@@ -53,9 +87,26 @@
             margin-bottom: 20px; border-left: 4px solid #667eea;
         }
         audio { width: 100%; margin-top: 6px; }
-        .loading { text-align: center; color: #667eea; font-weight: 600; padding: 24px; }
         .error { color: #e74c3c; text-align: center; padding: 12px; background: #fdecea; border-radius: 8px; }
         .hint { font-size: 0.8rem; color: #888; text-align: center; margin-top: 12px; }
+
+        /* Debug toggle */
+        .debug-toggle {
+            display: flex; align-items: center; gap: 8px;
+            justify-content: flex-end; margin-top: 8px;
+            font-size: 0.85rem; color: #718096; user-select: none; cursor: pointer;
+        }
+        .debug-toggle input { cursor: pointer; }
+        .debug-block {
+            margin-top: 16px; background: #1a202c; color: #e2e8f0;
+            border-radius: 12px; padding: 16px; font-size: 0.78rem;
+            font-family: 'Consolas', 'Monaco', monospace;
+            white-space: pre-wrap; word-break: break-all;
+            max-height: 400px; overflow-y: auto; line-height: 1.6;
+        }
+        .debug-block details > summary { cursor: pointer; color: #63b3ed; font-weight: 700; }
+        .debug-block .k { color: #f6ad55; }
+        .debug-block .v { color: #68d391; }
     </style>
 </head>
 <body>
@@ -84,14 +135,68 @@
         </div>
     </div>
 
-    <button id="generateBtn" onclick="generateSong()">🎤 Создать песню</button>
-    <p class="hint">Генерация может занять 1–3 минуты</p>
+    <button id="generateBtn" class="primary" onclick="generateSong()">🎤 Создать песню</button>
+    <label class="debug-toggle">
+        <input type="checkbox" id="debugToggle"> 🔧 Режим отладки
+    </label>
 
+    <div id="progress"></div>
     <div id="result" class="result"></div>
 </div>
 
 <script>
-const API_URL = 'https://song-generator-zbqc.onrender.com/api/generate';
+const API_BASE = 'https://song-generator-zbqc.onrender.com';
+const API_LYRICS = API_BASE + '/api/lyrics';
+const API_MUSIC = API_BASE + '/api/music';
+
+// Сохраняем настройку debug в localStorage
+const debugToggle = document.getElementById('debugToggle');
+debugToggle.checked = localStorage.getItem('debugMode') === '1';
+debugToggle.addEventListener('change', () => {
+    localStorage.setItem('debugMode', debugToggle.checked ? '1' : '0');
+    document.querySelectorAll('.debug-block').forEach(el => {
+        el.style.display = debugToggle.checked ? 'block' : 'none';
+    });
+});
+
+let timerInterval = null;
+let startTime = 0;
+
+function formatTime(sec) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function showProgress(stage, sub, percent) {
+    const progressDiv = document.getElementById('progress');
+    if (!progressDiv.querySelector('.progress-box')) {
+        progressDiv.innerHTML = `
+            <div class="progress-box">
+                <div class="progress-stage" id="pStage"></div>
+                <div class="progress-sub" id="pSub"></div>
+                <div class="progress-bar"><div class="progress-fill" id="pFill"></div></div>
+                <div class="progress-timer" id="pTimer"></div>
+            </div>`;
+    }
+    document.getElementById('pStage').innerHTML = `<span class="spinner"></span>${stage}`;
+    document.getElementById('pSub').textContent = sub;
+    document.getElementById('pFill').style.width = percent + '%';
+}
+
+function clearProgress() {
+    document.getElementById('progress').innerHTML = '';
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+function startTimer() {
+    startTime = Date.now();
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        const el = document.getElementById('pTimer');
+        if (el) el.textContent = 'Прошло: ' + formatTime(Math.floor((Date.now() - startTime) / 1000));
+    }, 500);
+}
 
 async function generateSong() {
     const theme = document.getElementById('theme').value.trim();
@@ -106,76 +211,138 @@ async function generateSong() {
     }
 
     btn.disabled = true;
-    resultDiv.innerHTML = '<div class="loading">🎤 Генерирую...<br><small>До 3 минут</small></div>';
+    resultDiv.innerHTML = '';
+    clearProgress();
+
+    // ============ ЭТАП 1: ТЕКСТ ============
+    showProgress('🎤 GigaChat пишет текст песни...', 'Обычно занимает 5-15 секунд', 10);
+    startTimer();
+
+    let lyrics = '';
+    let lyricsDebug = null;
 
     try {
-        const response = await fetch(API_URL, {
+        const resp = await fetch(API_LYRICS, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theme, genre, duration: parseInt(duration) })
+            body: JSON.stringify({ theme, genre })
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Ошибка сервера');
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Ошибка сервера');
+        lyrics = data.lyrics;
+        lyricsDebug = data.debug;
 
-        let html = `<h3>📜 Текст песни</h3><div class="lyrics-box">${data.lyrics}</div>`;
-
-        if (data.has_music && data.music_url) {
-            html += `<h3>🎧 Твоя песня</h3>
-                <audio controls src="${data.music_url}"></audio>
-                <button onclick="downloadAudio()" style="margin-top:10px;background:linear-gradient(135deg,#27ae60,#2ecc71);">💾 Скачать MP3</button>`;
-            window.__lastAudioUrl = data.music_url;
-        } else {
-            html += `<p class="error">⚠️ ${data.music_error || 'Музыка не сгенерирована'}</p>`;
-        }
-
-        // === ОТЛАДОЧНЫЙ БЛОК ===
-        if (data.debug) {
-            const dbg = data.debug;
-            const audioInfo = data.music_url
-                ? `✅ Аудио получено<br>MIME: ${dbg.mime || '?'}<br>Длина: ${data.music_url.length} символов (base64)`
-                : `❌ Аудио НЕ получено`;
-
-            html += `
-                <details style="margin-top:20px;background:#f0f4ff;border-radius:12px;padding:16px;font-size:0.85rem;">
-                    <summary style="cursor:pointer;font-weight:700;color:#4a5568;">🔧 Отладочная информация (нажми, чтобы раскрыть)</summary>
-                    <div style="margin-top:12px;line-height:1.7;color:#333;font-family:monospace;">
-                        <b>Аудио:</b> ${audioInfo}<br>
-                        <b>Стадия:</b> ${dbg.stage || '—'}<br>
-                        <b>Строк в ответе:</b> ${dbg.strings_count || 0}<br>
-                        <b>Выбран путь:</b> ${dbg.chosen_path || '—'}<br>
-                        <b>Длина выбранной:</b> ${dbg.chosen_len || 0}<br>
-                        <b>Первые байты (hex):</b> ${dbg.hex_head || '—'}<br>
-                        <b>MIME:</b> ${dbg.mime || '—'}<br>
-                        <b>Ошибка:</b> ${dbg.error || '—'}<br>
-                        <b>Превью:</b> ${dbg.raw_preview ? dbg.raw_preview.substring(0, 60) + '...' : '—'}
-                        <hr style="margin:10px 0;border:none;border-top:1px solid #ddd;">
-                        <b>Топ-5 строк:</b><br>
-                        ${(dbg.top_strings || []).map((s, i) =>
-                            `${i+1}. <code>${s.path}</code><br>&nbsp;&nbsp;len=${s.len}, head=<code>${s.head.substring(0, 40)}</code>`
-                        ).join('<br>')}
-                    </div>
-                </details>
-            `;
-        }
-
-        resultDiv.innerHTML = html;
-
+        // Показываем текст сразу
+        resultDiv.innerHTML = `<h3>📜 Текст песни</h3><div class="lyrics-box">${lyrics}</div>`;
     } catch (error) {
-        resultDiv.innerHTML = `<p class="error">Ошибка: ${error.message}</p>`;
-    } finally {
+        clearProgress();
+        resultDiv.innerHTML = `<p class="error">Ошибка текста: ${error.message}</p>`;
         btn.disabled = false;
+        return;
     }
+
+    // ============ ЭТАП 2: МУЗЫКА ============
+    const musicStages = [
+        [0,   '🎼 Композитор раскладывает аккорды...',    'ACE Music изучает текст песни', 20],
+        [15,  '🎸 Записываем гитарную партию...',         'Идёт генерация инструментала', 35],
+        [35,  '🎤 Вокалист записывает припев...',         'Синтез вокала на русском', 55],
+        [60,  '🥁 Добавляем барабаны и бас...',           'Собираем аранжировку', 70],
+        [90,  '🎚️ Сводим трек и мастеринг...',            'Финальная обработка аудио', 85],
+        [120, '⏳ Почти готово, ещё немного...',          'Дольше обычного — сервер загружен', 92],
+        [170, '🐢 Сервер отвечает медленно, ждём...',     'Не закрывай страницу', 95],
+    ];
+
+    startTimer();
+    let currentStageIdx = 0;
+    const stageTimers = musicStages.map(([t, stage, sub, pct]) =>
+        setTimeout(() => {
+            showProgress(stage, sub, pct);
+            currentStageIdx++;
+        }, t * 1000)
+    );
+
+    showProgress(musicStages[0][1], musicStages[0][2], musicStages[0][3]);
+
+    let musicData = null;
+    let musicError = null;
+    let musicDebug = null;
+
+    try {
+        const resp = await fetch(API_MUSIC, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lyrics, theme, genre, duration: parseInt(duration) })
+        });
+        const data = await resp.json();
+        musicData = data.music_url;
+        musicError = data.music_error;
+        musicDebug = data.debug;
+    } catch (error) {
+        musicError = 'Сетевая ошибка: ' + error.message;
+    }
+
+    stageTimers.forEach(t => clearTimeout(t));
+    clearProgress();
+
+    // ============ РЕЗУЛЬТАТ ============
+    let html = `<h3>📜 Текст песни</h3><div class="lyrics-box">${lyrics}</div>`;
+
+    if (musicData) {
+        html += `<h3>🎧 Твоя песня</h3>
+            <audio controls src="${musicData}"></audio>
+            <button class="primary" onclick="downloadAudio()" style="margin-top:10px;background:linear-gradient(135deg,#27ae60,#2ecc71);">💾 Скачать MP3</button>`;
+        window.__lastAudioUrl = musicData;
+    } else {
+        html += `<p class="error">⚠️ ${musicError || 'Музыка не сгенерирована'}</p>`;
+    }
+
+    // Debug-блоки
+    const debugVisible = debugToggle.checked;
+    const dbgStyle = debugVisible ? '' : 'display:none;';
+
+    if (musicDebug) {
+        html += `<div class="debug-block" style="${dbgStyle}">` + buildDebugHtml(musicDebug) + `</div>`;
+    }
+
+    resultDiv.innerHTML = html;
+
+    if (debugToggle.checked) {
+        document.querySelectorAll('.debug-block').forEach(el => el.style.display = 'block');
+    }
+
+    btn.disabled = false;
+}
+
+function buildDebugHtml(d) {
+    const lines = [];
+    lines.push(`<details open><summary>🔧 Debug: музыка</summary>`);
+    lines.push(`<span class="k">stage:</span> <span class="v">${d.stage || '—'}</span>`);
+    lines.push(`<span class="k">strings_count:</span> <span class="v">${d.strings_count || 0}</span>`);
+    lines.push(`<span class="k">chosen_path:</span> <span class="v">${d.chosen_path || '—'}</span>`);
+    lines.push(`<span class="k">chosen_len:</span> <span class="v">${d.chosen_len || 0}</span>`);
+    lines.push(`<span class="k">hex_head:</span> <span class="v">${d.hex_head || '—'}</span>`);
+    lines.push(`<span class="k">mime:</span> <span class="v">${d.mime || '—'}</span>`);
+    lines.push(`<span class="k">error:</span> <span class="v">${d.error || '—'}</span>`);
+    if (d.raw_preview) lines.push(`<span class="k">raw_preview:</span> <span class="v">${d.raw_preview.substring(0, 100)}...</span>`);
+
+    if (d.top_strings && d.top_strings.length) {
+        lines.push(`\n<b>Топ-5 длинных строк:</b>`);
+        d.top_strings.forEach((s, i) => {
+            lines.push(`${i+1}. ${s.path}`);
+            lines.push(`   len=${s.len}, head="${s.head.substring(0, 50)}"`);
+        });
+    }
+    lines.push(`</details>`);
+    return lines.join('\n');
 }
 
 function downloadAudio() {
     const dataUrl = window.__lastAudioUrl;
     if (!dataUrl) return;
-
     if (!dataUrl.startsWith('data:')) {
         window.open(dataUrl, '_blank');
         return;
     }
-
     const commaIdx = dataUrl.indexOf(',');
     const header = dataUrl.substring(5, commaIdx);
     const b64 = dataUrl.substring(commaIdx + 1);
@@ -183,9 +350,7 @@ function downloadAudio() {
 
     const binary = atob(b64);
     const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-    }
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     const blob = new Blob([bytes], { type: mime });
     const url = URL.createObjectURL(blob);
 
@@ -198,6 +363,5 @@ function downloadAudio() {
     URL.revokeObjectURL(url);
 }
 </script>
-    
 </body>
 </html>
